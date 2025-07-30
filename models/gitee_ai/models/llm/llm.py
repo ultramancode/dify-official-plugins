@@ -415,6 +415,7 @@ class GiteeAILargeLanguageModel(_CommonOaiApiCompat, LargeLanguageModel):
         :return: llm response chunk generator
         """
         full_assistant_content = ""
+        full_reasoning_content = ""
         chunk_index = 0
 
         def create_final_llm_result_chunk(
@@ -431,7 +432,11 @@ class GiteeAILargeLanguageModel(_CommonOaiApiCompat, LargeLanguageModel):
                 prompt_tokens = self._num_tokens_from_string(model, prompt_messages[0].content)
             completion_tokens = usage.get("completion_tokens") if usage else 0
             if completion_tokens is None:
-                completion_tokens = self._num_tokens_from_string(model, full_assistant_content)
+                # For token calculation, include reasoning content if present
+                full_content_for_tokens = full_assistant_content
+                if full_reasoning_content:
+                    full_content_for_tokens = f"<think>{full_reasoning_content}</think>{full_assistant_content}"
+                completion_tokens = self._num_tokens_from_string(model, full_content_for_tokens)
 
             # transform usage
             usage_obj = self._calc_response_usage(model, credentials, prompt_tokens, completion_tokens)
@@ -565,6 +570,7 @@ class GiteeAILargeLanguageModel(_CommonOaiApiCompat, LargeLanguageModel):
                     # reset tool calls
                     tool_calls = []
                     full_assistant_content += delta_content
+                    full_reasoning_content += reasoning_content_for_message if reasoning_content_for_message else ""
                 elif "text" in choice:
                     choice_text = choice.get("text", "")
                     if choice_text == "":

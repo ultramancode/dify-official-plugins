@@ -268,6 +268,7 @@ class VolcengineMaaSLargeLanguageModel(LargeLanguageModel):
         def _handle_stream_chat_response(chunks: Generator[ChatCompletionChunk]) -> Generator:
             chunk_index = 0
             full_assistant_content = ""
+            full_reasoning_content = ""
             finish_reason = None
             usage = None
             tools_calls: list[AssistantPromptMessage.ToolCall] = []
@@ -297,6 +298,7 @@ class VolcengineMaaSLargeLanguageModel(LargeLanguageModel):
                         reasoning_content=reasoning_content,
                     )
                     full_assistant_content += delta_content
+                    full_reasoning_content += reasoning_content if reasoning_content else ""
                     yield LLMResultChunk(
                         model=model,
                         prompt_messages=prompt_messages,
@@ -316,6 +318,11 @@ class VolcengineMaaSLargeLanguageModel(LargeLanguageModel):
                     ),
                 )
 
+            # For token calculation, include reasoning content if present
+            full_content_for_tokens = full_assistant_content
+            if full_reasoning_content:
+                full_content_for_tokens = f"<think>{full_reasoning_content}</think>{full_assistant_content}"
+                
             yield self._create_final_llm_result_chunk(
                 index=chunk_index,
                 message=AssistantPromptMessage(content=""),
@@ -324,7 +331,7 @@ class VolcengineMaaSLargeLanguageModel(LargeLanguageModel):
                 model=model,
                 credentials=credentials,
                 prompt_messages=prompt_messages,
-                full_content=full_assistant_content,
+                full_content=full_content_for_tokens,
             )
 
         def _handle_chat_response(resp: ChatCompletion) -> LLMResult:
