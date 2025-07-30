@@ -305,7 +305,6 @@ class TongyiLargeLanguageModel(LargeLanguageModel):
         :param incremental_output: is incremental output
         :return: llm response chunk generator result
         """
-        is_reasoning = False
         # This is used to handle unincremental output correctly
         full_text = ""
         tool_calls = []
@@ -361,9 +360,14 @@ class TongyiLargeLanguageModel(LargeLanguageModel):
             else:
                 message = response.output.choices[0].message
 
-                resp_content, is_reasoning = self._wrap_thinking_by_reasoning_content(
-                    message, is_reasoning
-                )
+                # Simple field separation approach - let backend handle reasoning processing
+                if hasattr(message, 'content'):
+                    resp_content = message.content
+                else:
+                    resp_content = message.get('content', '')
+                    
+                reasoning_content = message.get('reasoning_content') if hasattr(message, 'get') else getattr(message, 'reasoning_content', None)
+                
                 if not resp_content:
                     if "tool_calls" in response.output.choices[0].message:
                         self._handle_tool_call_stream(response, tool_calls, incremental_output)
@@ -378,7 +382,8 @@ class TongyiLargeLanguageModel(LargeLanguageModel):
                     full_text = resp_content
                 
                 assistant_prompt_message = AssistantPromptMessage(
-                    content=delta
+                    content=delta,
+                    reasoning_content=reasoning_content,
                 )
                 yield LLMResultChunk(
                     model=model,
@@ -631,47 +636,6 @@ class TongyiLargeLanguageModel(LargeLanguageModel):
             }
             tool_definitions.append(tool_definition)
         return tool_definitions
-
-    def _wrap_thinking_by_reasoning_content(self, delta: dict, is_reasoning: bool) -> tuple[str, bool]:
-        """
-        If the reasoning response is from delta.get("reasoning_content"), we wrap
-        it with HTML think tag.
-        :param delta: delta dictionary from LLM streaming response
-        :param is_reasoning: is reasoning
-        :return: tuple of (processed_content, is_reasoning)
-        """
-
-        content = delta.get("content") or ""
-        reasoning_content = delta.get("reasoning_content")
-        try:
-            if reasoning_content:
-                try:
-                    if isinstance(reasoning_content, list):
-                        reasoning_content = "\n".join(map(str, reasoning_content))
-                    elif not isinstance(reasoning_content, str):
-                        reasoning_content = str(reasoning_content)
-
-                    if not is_reasoning:
-                        content = "<think>\n" + reasoning_content
-                        is_reasoning = True
-                    else:
-                        content = reasoning_content
-                except Exception as ex:
-                    raise ValueError(
-                        f"[wrap_thinking_by_reasoning_content-1] {ex}"
-                    ) from ex
-            elif is_reasoning and content:
-                if not isinstance(content, list):
-                    content = str(content)
-                else:
-                    content = ""
-                content = "\n</think>" + content
-                is_reasoning = False
-        except Exception as ex:
-            raise ValueError(
-                f"[wrap_thinking_by_reasoning_content-2] {ex}"
-            ) from ex
-        return content, is_reasoning
 
     @property
     def _invoke_error_mapping(self) -> dict[type[InvokeError], list[type[Exception]]]:

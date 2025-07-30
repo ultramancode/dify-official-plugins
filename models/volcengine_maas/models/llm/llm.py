@@ -249,17 +249,6 @@ class VolcengineMaaSLargeLanguageModel(LargeLanguageModel):
             return _handle_chat_response()
         return _handle_stream_chat_response()
 
-    def wrap_thinking(self, delta: dict, is_reasoning: bool) -> tuple[str, bool]:
-        content = ""
-        reasoning_content = None
-        if hasattr(delta, "content"):
-            content = delta.content
-        if hasattr(delta, "reasoning_content"):
-            reasoning_content = delta.reasoning_content
-        return self._wrap_thinking_by_reasoning_content(
-            {"content": content, "reasoning_content": reasoning_content}, is_reasoning
-        )
-
     def _generate_v3(
         self,
         model: str,
@@ -277,7 +266,6 @@ class VolcengineMaaSLargeLanguageModel(LargeLanguageModel):
             req_params["tools"] = tools
 
         def _handle_stream_chat_response(chunks: Generator[ChatCompletionChunk]) -> Generator:
-            is_reasoning_started = False
             chunk_index = 0
             full_assistant_content = ""
             finish_reason = None
@@ -296,13 +284,17 @@ class VolcengineMaaSLargeLanguageModel(LargeLanguageModel):
                     if chunk.choices:
                         finish_reason = chunk.choices[0].finish_reason
                         delta = chunk.choices[0].delta
-                        delta_content, is_reasoning_started = self.wrap_thinking(delta, is_reasoning_started)
+                        
+                        # Simple field separation approach - let backend handle reasoning processing
+                        delta_content = delta.content if hasattr(delta, "content") else ""
+                        reasoning_content = delta.reasoning_content if hasattr(delta, "reasoning_content") else None
 
                         if delta.tool_calls:
                             tools_calls = self._increase_tool_call(delta.tool_calls, tools_calls)
 
                     assistant_prompt_message = AssistantPromptMessage(
                         content=delta_content,
+                        reasoning_content=reasoning_content,
                     )
                     full_assistant_content += delta_content
                     yield LLMResultChunk(

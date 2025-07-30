@@ -416,7 +416,6 @@ class GiteeAILargeLanguageModel(_CommonOaiApiCompat, LargeLanguageModel):
         """
         full_assistant_content = ""
         chunk_index = 0
-        is_reasoning = False
 
         def create_final_llm_result_chunk(
             id: Optional[str],
@@ -549,21 +548,18 @@ class GiteeAILargeLanguageModel(_CommonOaiApiCompat, LargeLanguageModel):
                         tool_calls = self._extract_response_tool_calls(assistant_message_tool_calls)
                         increase_tool_call(tool_calls)
 
-                    # Check for reasoning_content if thinking is enabled
-                    if delta.get("reasoning_content") or is_reasoning:
-                        processed_content, is_reasoning = self._wrap_thinking_by_reasoning_content(
-                            delta, is_reasoning
-                        )
-                        if processed_content:
-                            delta_content = processed_content
-                        else:
-                            continue
-                    elif delta_content is None or delta_content == "":
+                    # Simple field separation approach - let backend handle reasoning processing
+                    delta_content = delta.get("content", "")
+                    reasoning_content_for_message = delta.get("reasoning_content")
+
+                    # Skip if both content and reasoning_content are empty
+                    if not delta_content and not reasoning_content_for_message:
                         continue
 
                     # transform assistant message to prompt message
                     assistant_prompt_message = AssistantPromptMessage(
                         content=delta_content,
+                        reasoning_content=reasoning_content_for_message,
                     )
 
                     # reset tool calls
@@ -918,45 +914,4 @@ class GiteeAILargeLanguageModel(_CommonOaiApiCompat, LargeLanguageModel):
             )
 
         return tool_call
-
-    def _wrap_thinking_by_reasoning_content(self, delta: dict, is_reasoning: bool) -> tuple[str, bool]:
-        """
-        If the reasoning response is from delta.get("reasoning_content"), we wrap
-        it with HTML think tag.
-        :param delta: delta dictionary from LLM streaming response
-        :param is_reasoning: is reasoning
-        :return: tuple of (processed_content, is_reasoning)
-        """
-
-        content = delta.get("content") or ""
-        reasoning_content = delta.get("reasoning_content")
-        try:
-            if reasoning_content:
-                try:
-                    if isinstance(reasoning_content, list):
-                        reasoning_content = "\n".join(map(str, reasoning_content))
-                    elif not isinstance(reasoning_content, str):
-                        reasoning_content = str(reasoning_content)
-
-                    if not is_reasoning:
-                        content = "<think>\n" + reasoning_content
-                        is_reasoning = True
-                    else:
-                        content = reasoning_content
-                except Exception as ex:
-                    raise ValueError(
-                        f"[wrap_thinking_by_reasoning_content-1] {ex}"
-                    ) from ex
-            elif is_reasoning and content:
-                if not isinstance(content, list):
-                    content = str(content)
-                else:
-                    content = ""
-                content = "\n</think>" + content
-                is_reasoning = False
-        except Exception as ex:
-            raise ValueError(
-                f"[wrap_thinking_by_reasoning_content-2] {ex}"
-            ) from ex
-        return content, is_reasoning
 
