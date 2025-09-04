@@ -1,8 +1,8 @@
 # this model corresponds to qwen-turbo-latest, for more details
 # please refer to (https://help.aliyun.com/zh/model-studio/getting-started/models#ff492e2c10lub)
-model: qwen-turbo-latest
+model: qwen-turbo-2025-07-15
 label:
-  en_US: qwen-turbo-latest(Qwen3)
+  en_US: qwen-turbo-2025-07-15(Qwen3)
 model_type: llm
 features:
   - multi-tool-call
@@ -10,7 +10,7 @@ features:
   - stream-tool-call
 model_properties:
   mode: chat
-  context_size: 1000000
+  context_size: 131072
 parameter_rules:
   - name: temperature
     use_template: temperature
