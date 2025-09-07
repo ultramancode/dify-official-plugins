@@ -3,8 +3,8 @@ import re
 
 import requests
 
-from tools.comfyui_workflow import ComfyUiWorkflow
 from tools.comfyui_client import ComfyUiClient
+from tools.comfyui_workflow import ComfyUiWorkflow
 
 
 class ModelManager:
@@ -33,8 +33,8 @@ class ModelManager:
         # For example, if lora_info = "lora.safetensor:0.8", it means a local model "lora.safetensor" should be applied with its strength 0.8
         # If lora_info = "civitai:5529", it means a CivitAI model https://civitai.com/models/5529/eye-lora should be applied with its strength 1.0(default value).
         lora_info = lora_info.lstrip(" ").rstrip(" ")
-        if not re.match("([A-Za-z0-9\.]+|(civitai:[0-9]+(@[0-9]+)?))(:[0-9]+(\.[0-9])?)?", lora_info):
-            raise Exception(f"Invalid lora_info")
+        if not re.match(r"([A-Za-z0-9\.]+|(civitai:[0-9]+(@[0-9]+)?))(:[0-9]+(\.[0-9])?)?", lora_info):
+            raise Exception("Invalid lora_info")
 
         if len(lora_info.split(":")) == 3 or (lora_info.split(":")[0] != "civitai" and len(lora_info.split(":")) == 2):
             lora_name = self.decode_model_name(":".join(lora_info.split(":")[:-1]), save_dir)
@@ -53,10 +53,10 @@ class ModelManager:
         # For example, if model_name = "lora.safetensor", it means a local model "lora.safetensor"
         # If model_name = "civitai:5529", it means a CivitAI model https://civitai.com/models/5529/eye-lora
         model_name = model_name.lstrip(" ").rstrip(" ")
-        if not re.match("[A-Za-z0-9\.]+|(civitai:[0-9]+(@[0-9]+)?)", model_name):
-            raise Exception(f"Invalid model_name")
+        if not re.match(r"[A-Za-z0-9\.]+|(civitai:[0-9]+(@[0-9]+)?)", model_name):
+            raise Exception("Invalid model_name")
         if len(save_dir) == 0:
-            raise Exception(f"Please specify save_dir")
+            raise Exception("Please specify save_dir")
         if model_name in self._comfyui_cli.get_model_dirs(save_dir):
             # model_name is the name for an existing model in ComfyUI
             return model_name
@@ -74,15 +74,24 @@ class ModelManager:
                 version_id = None
             model_name_human, filenames = self.download_civitai(model_id, version_id, save_dir)
             return filenames[0]
-        if len(re.findall("https?://huggingface\.co/.*", model_name)) > 0:
-            # model_name is a URL for huggingface.co
-            url = model_name
-            return self.download_model(url, save_dir, model_name.split("/")[-1], self.get_hf_api_key())
         if len(re.findall("https?://.*", model_name)) > 0:
             # model_name is a general URL
             url = model_name
-            return self.download_model(url, save_dir, model_name.split("/")[-1], None)
+            return self.download_model_autotoken(url, save_dir, model_name.split("/")[-1])
         raise Exception(f"Model {model_name} does not exist in the local folder {save_dir}/ or online.")
+
+    def download_model_autotoken(self, url: str, save_dir: str, filename: str | None = None) -> str:
+        try:
+            return self.download_model(url, save_dir, filename, None)
+        except:
+            pass
+        if "://civitai.com" in url:
+            token = self.get_civitai_api_key()
+        elif "://huggingface.co" in url:
+            token = self.get_hf_api_key()
+        else:
+            raise Exception("Unsupported token")
+        return self.download_model(url, save_dir, filename, token)
 
     def download_model(self, url: str, save_dir: str, filename: str | None = None, token=None) -> str:
         headers = {}
@@ -90,7 +99,7 @@ class ModelManager:
             headers = {"Authorization": f"Bearer {token}"}
         response = requests.head(url, headers=headers)
         if response.status_code == 401:
-            raise Exception(f"401 Unauthorized. Please check the api_token.")
+            raise Exception("401 Unauthorized. Please check the api_token.")
         elif response.status_code >= 400:
             raise Exception(f"Download failed. Error {response.status_code}. Please check the URL.")
 
@@ -145,21 +154,17 @@ class ModelManager:
             raise Exception(f"Version {version_id} of model {model_name_human} not found.")
         model_filenames = [file["name"] for file in model_detail["files"]]
 
-        self.download_model(
+        self.download_model_autotoken(
             f"https://civitai.com/api/download/models/{version_id}",
             save_dir,
             model_filenames[0].split("/")[-1],
-            self.get_civitai_api_key(),
         )
 
         return model_name_human, model_filenames
 
     def download_hugging_face(self, repo_id: str, filepath: str, save_dir: str):
-        self.download_model(
-            f"https://huggingface.co/{repo_id}/resolve/main/{filepath}",
-            save_dir,
-            filepath.split("/")[-1],
-            self.get_hf_api_key(),
+        self.download_model_autotoken(
+            f"https://huggingface.co/{repo_id}/resolve/main/{filepath}", save_dir, filepath.split("/")[-1], None
         )
         return filepath.split("/")[-1]
 
@@ -173,18 +178,8 @@ class ModelManager:
 
     def download_from_json(self, workflow_json: str) -> list[str]:
         workflow = ComfyUiWorkflow(workflow_json)
-        models = []
-        for node in workflow.json_original()["nodes"]:
-            if "properties" in node and "models" in node["properties"]:
-                models += node["properties"]["models"]
-
-        for model in models:
-            token = None
-            if "://civitai.com" in model["url"]:
-                token = self.get_civitai_api_key()
-            elif "://huggingface.co" in model["url"]:
-                token = self.get_hf_api_key()
-
-            self.download_model(model["url"], model["directory"], model["name"], token)
-        model_names = [m["name"] for m in models]
+        model_names = []
+        for model in workflow.get_models_to_download():
+            self.download_model_autotoken(model.url, model.directory, model.name)
+            model_names.append(model.name)
         return model_names

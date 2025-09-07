@@ -1,7 +1,8 @@
+import dataclasses
 import json
 import os
-from copy import deepcopy
 import random
+from copy import deepcopy
 
 LORA_NODE = {
     "inputs": {
@@ -22,44 +23,52 @@ FluxGuidanceNode = {
 }
 
 
+@dataclasses.dataclass
+class ComfyUIModel:
+    name: str
+    url: str
+    directory: str
+
+
 class ComfyUiWorkflow:
     def __init__(self, workflow_json: str | dict):
         if type(workflow_json) is str:
-            self.load_from_json_str(workflow_json)
+
+            def clean_json_string(string: str) -> str:
+                for char in ["\n", "\r", "\t", "\x08", "\x0c"]:
+                    string = string.replace(char, "")
+                for char_id in range(0x007F, 0x00A1):
+                    string = string.replace(chr(char_id), "")
+                return string
+
+            workflow_json: dict = json.loads(clean_json_string(workflow_json))
         elif type(workflow_json) is dict:
-            self.load_from_json_dict(workflow_json)
+            pass
         else:
             raise Exception("workflow_json has unsupported format. Please convert it to str or dict")
 
-    def __str__(self):
-        return json.dumps(self._workflow_api)
-
-    def load_from_json_str(self, workflow_json_str: str):
-        def clean_json_string(string: str) -> str:
-            for char in ["\n", "\r", "\t", "\x08", "\x0c"]:
-                string = string.replace(char, "")
-            for char_id in range(0x007F, 0x00A1):
-                string = string.replace(chr(char_id), "")
-            return string
-
-        workflow_json: dict = json.loads(clean_json_string(workflow_json_str))
-        self.load_from_json_dict(workflow_json)
-
-    def load_from_json_dict(self, workflow_json: dict):
         self._workflow_original = workflow_json
+        self.models_to_download: list[ComfyUIModel] = []
         if "nodes" in workflow_json:
             try:
                 self._workflow_api = self.convert_to_api_ready(workflow_json)
             except Exception as e:
                 raise Exception(f"Failed to convert Workflow to API ready. {str(e)}")
+            for node in workflow_json["nodes"]:
+                if "properties" in node and "models" in node["properties"]:
+                    for model in node["properties"]["models"]:
+                        self.models_to_download.append(ComfyUIModel(model["name"], model["url"], model["directory"]))
         else:
             self._workflow_api = deepcopy(workflow_json)
+
+    def __str__(self):
+        return json.dumps(self._workflow_api)
 
     def convert_to_api_ready(self, workflow_json: dict) -> dict:
         result = {}
         current_dir = os.path.dirname(os.path.realpath(__file__))
         widgets_value_path = os.path.join(current_dir, "json", "widgets_value_names.json")
-        with open(widgets_value_path, "r", encoding="UTF-8") as f:
+        with open(widgets_value_path, encoding="UTF-8") as f:
             widgets_value_names = json.loads(f.read())
         nodes = workflow_json["nodes"]
         links = workflow_json["links"]
@@ -108,6 +117,9 @@ class ComfyUiWorkflow:
     def json_original_str(self) -> str:
         return json.dumps(self._workflow_original)
 
+    def get_models_to_download(self) -> list[ComfyUIModel]:
+        return self.models_to_download
+
     def get_property(self, node_id: str | None, path: str):
         try:
             workflow_json = self._workflow_api[node_id]
@@ -121,7 +133,7 @@ class ComfyUiWorkflow:
         workflow_json = self._workflow_api[node_id]
         for name in path.split("/")[:-1]:
             if not can_create and name not in workflow_json:
-                raise Exception(f"Cannot create a new property.")
+                raise Exception("Cannot create a new property.")
             workflow_json = workflow_json[name]
         workflow_json[path.split("/")[-1]] = value
 
@@ -344,11 +356,3 @@ class ComfyUiWorkflow:
             [self.get_property(sampler_node_id, "inputs/positive")[0], 0],
         )
         self.set_property(sampler_node_id, "inputs/positive", [new_node_id, 0])
-
-
-if __name__ == "__main__":
-    current_dir = os.path.dirname(os.path.realpath(__file__))
-    workflow_path = os.path.join(current_dir, "json", "txt2vid_wan2_2_5B.json")
-    txt = open(workflow_path, "r", encoding="utf-8").read()
-    workflow = ComfyUiWorkflow(txt)
-    print(workflow)

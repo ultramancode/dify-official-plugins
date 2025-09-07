@@ -1,10 +1,12 @@
-from typing import Any, Generator
-from dify_plugin.entities.tool import ToolInvokeMessage
+from collections.abc import Generator
+from typing import Any
+
 from dify_plugin import Tool
-from tools.comfyui_client import ComfyUiClient
+from dify_plugin.entities.tool import ToolInvokeMessage
 from dify_plugin.errors.tool import ToolProviderCredentialValidationError
 
-from tools.model_manager import ModelManager
+from tools.comfyui_client import ComfyUiClient
+from tools.comfyui_model_manager import ModelManager
 
 
 class DownloadByURL(Tool):
@@ -29,11 +31,5 @@ class DownloadByURL(Tool):
         token_type = tool_parameters.get("token_type")
         save_to = tool_parameters.get("save_dir")
 
-        token = None
-        if token_type == "civitai":
-            token = self.model_manager.get_civitai_api_key()
-        elif token_type == "hugging_face":
-            token = self.model_manager.get_hf_api_key()
-
-        self.model_manager.download_model(url, save_to, name, token)
+        self.model_manager.download_model_autotoken(url, save_to, name)
         yield self.create_variable_message("model_name", name)
