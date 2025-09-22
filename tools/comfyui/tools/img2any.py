@@ -6,7 +6,7 @@ from dify_plugin import Tool
 from dify_plugin.entities.tool import ToolInvokeMessage
 from dify_plugin.errors.tool import ToolProviderCredentialValidationError
 
-from tools.comfyui_client import ComfyUiClient, ComfyUiFile, FileType
+from tools.comfyui_client import ComfyUiClient, ComfyUiResultFile, FileType
 from tools.comfyui_model_manager import ModelManager
 from tools.comfyui_workflow import ComfyUiWorkflow
 
@@ -25,6 +25,7 @@ class ComfyuiImg2Any(Tool):
             self.comfyui,
             civitai_api_key=self.runtime.credentials.get("civitai_api_key"),
             hf_api_key=self.runtime.credentials.get("hf_api_key"),
+            expire_after=int(self.runtime.credentials.get("expire_after", 300)),
         )
 
         feature: str = tool_parameters.get("feature")
@@ -57,7 +58,7 @@ class ComfyuiImg2Any(Tool):
                 },
             )
 
-    def depth_pro(self, feature, image_names) -> list[ComfyUiFile]:
+    def depth_pro(self, feature, image_names) -> list[ComfyUiResultFile]:
         output_images = []
         current_dir = os.path.dirname(os.path.realpath(__file__))
         with open(os.path.join(current_dir, "json", "depth_pro.json")) as file:
@@ -78,7 +79,7 @@ class ComfyuiImg2Any(Tool):
                 )
         return output_images
 
-    def depth_anything(self, feature, image_names) -> list[ComfyUiFile]:
+    def depth_anything(self, feature, image_names) -> list[ComfyUiResultFile]:
         output_images = []
         current_dir = os.path.dirname(os.path.realpath(__file__))
         with open(os.path.join(current_dir, "json", "depth_anything.json")) as file:
@@ -95,7 +96,7 @@ class ComfyuiImg2Any(Tool):
                 )
         return output_images
 
-    def face_swap(self, image_name1, image_name2) -> list[ComfyUiFile]:
+    def face_swap(self, image_name1, image_name2) -> list[ComfyUiResultFile]:
         current_dir = os.path.dirname(os.path.realpath(__file__))
         with open(os.path.join(current_dir, "json", "face_swap.json")) as file:
             workflow = ComfyUiWorkflow(file.read())
@@ -110,7 +111,7 @@ class ComfyuiImg2Any(Tool):
             )
         return output_images
 
-    def upscale(self, feature, image_names) -> list[ComfyUiFile]:
+    def upscale(self, feature, image_names) -> list[ComfyUiResultFile]:
         output_images = []
         current_dir = os.path.dirname(os.path.realpath(__file__))
         with open(os.path.join(current_dir, "json", "upscale.json")) as file:
